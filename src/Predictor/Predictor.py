@@ -1,16 +1,13 @@
-from ..DataSetParsers.AdjacencyMatrices.BaseAdjacencyMatricesBuilder import BaseAdjacencyMatricesBuilder
-from ..DataSetParsers.NodeLists.BaseNodeListsBuilder import BaseNodeListsBuilder
+from ..DataSetParsers.DecagonPublicAdjacencyMatricesBuilder import DecagonPublicAdjacencyMatricesBuilder
+from ..DataSetParsers.DecagonPublicNodeListsBuilder import DecagonPublicNodeListsBuilder
 from ..Dtos.PredictionsInformation import PredictionsInformation
 from ..Dtos.NodeLists import NodeLists
 from ..Dtos.NodeIds import DrugId, SideEffectId
-from ..Dtos.Enums.DataSetType import DataSetType
 from ..Utils.ArgParser import ArgParser
 from ..Utils.Config import Config
-from ..Utils.ObjectFactory import ObjectFactory
 
 from typing import Type, Dict, Tuple
 from threading import Lock
-from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import sklearn.metrics
@@ -52,12 +49,7 @@ class _PredictionsInfoHolder:
         self.trainEdgeDict = self._buildTrainEdgeDict()
 
     def _getNodeLists(self) -> NodeLists:
-        listBuilder = ObjectFactory.build(
-            BaseNodeListsBuilder,
-            DataSetType[config.getSetting('DataSetType')],
-            config=config,
-        )
-
+        listBuilder = DecagonPublicNodeListsBuilder(config)
         return listBuilder.build()
 
     def _buildTestEdgeDict(self) -> Dict:
@@ -140,11 +132,9 @@ class _PredictionsInfoHolder:
         return np.take(mtx.todense(), idxsLinear).T
 
     def _getDrugDrugMtxs(self):
-        adjMtxBuilder = ObjectFactory.build(
-            BaseAdjacencyMatricesBuilder,
-            DataSetType[config.getSetting('DataSetType')],
-            config=config,
-            nodeLists=self.nodeLists
+        adjMtxBuilder = DecagonPublicAdjacencyMatricesBuilder(
+            config,
+            self.nodeLists
         )
 
         return adjMtxBuilder.build().drugDrugRelationMtxs
@@ -340,14 +330,4 @@ def _write_as_parquet(relations_to_write):
 
         fname = os.getcwd() + '/train-edges-%s.pkl.gzip' % relationId
         df.to_pickle(fname, compression='gzip')
-
-if __name__ == '__main__':
-    predictor = NpPredictor('C0003126')
-    import pdb; pdb.set_trace()
-    x = predictor.predict()
-    print(x)
-
-    #trainEdgeIter = TrainingEdgeIterator('C0000000')
-    #x = trainEdgeIter.get_train_edges_as_embeddings_df()
-    #trainEdgeIter.get_train_edges()
 
