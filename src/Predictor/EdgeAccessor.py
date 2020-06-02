@@ -4,7 +4,7 @@ from ..Dtos.ModelType import ModelType
 from typing import Iterator
 import numpy as np
 
-class AllEdgeIterator:
+class AllEdgeAccessor:
     def __init__(self, modelType: ModelType, relationId: str) -> None:
         # The entire ndarray for edges
         self.edges: np.ndarray = self._getEdges(modelType, relationId)
@@ -67,12 +67,12 @@ class AllEdgeIterator:
         for i in range(allEdges.shape[0]):
             yield allEdges[i]
 
-class TrainEdgeIterator(EdgeIterator):
+class TrainEdgeAccessor(AllEdgeAccessor):
     def _getEdges(self, modelType: ModelType, relationId: str) -> np.ndarray:
         predsInfoHolder = PredictionsInfoHolder.getInstance()
         return predsInfoHolder.trainEdgeDict[modelType][relationId]
 
-class TestEdgeIterator(EdgeIterator):
+class TestEdgeAccessor(AllEdgeAccessor):
     def _getEdges(self, modelType: ModelType, relationId: str) -> np.ndarray:
         predsInfoHolder = PredictionsInfoHolder.getInstance()
         return predsInfoHolder.testEdgeDict[modelType][relationId]
