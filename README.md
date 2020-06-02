@@ -6,6 +6,20 @@ side effect.  These interfaces may be used for other experiments, as these pretr
 matrices already give relatively good performance for link prediction on a variety of 
 drug-drug interaction side effects.
 
+## Installation
+We now cover installation.  Installing this repository is quite simple.  To do so, one must run the following:
+
+```
+$ conda create --name decagon-predictor python=3.6
+$ conda activate decagon-predictor
+$
+$ ./install.sh
+```
+
+This will create a new conda environment, install all requirements (from `requirements.txt`), and download
+and do some small preprocessing on the data.  After this is done, the code should be ready to run.
+
+## Repository Descriptions
 Before proceeding, it will be useful to recall the approach Decagon takes for link
 prediction.  Decagon uses a tensor decomposition framework, wherein to predict whether
 drugs i and j will have some side effect r, Decagon evaluates the following matrix
@@ -82,16 +96,3 @@ for relation in relations:
     print('Relation: %s, AUC: %f' % (relation, predictor.predict().auroc))
 
 ```
-
-## Installation
-We now cover installation.  Installing this repository is quite simple.  To do so, one must run the following:
-
-```
-$ conda create --name decagon-predictor python=3.6
-$ conda activate decagon-predictor
-$
-$ ./install.sh
-```
-
-This will create a new conda environment, install all requirements (from `requirements.txt`), and download
-and do some small preprocessing on the data.  After this is done, the code should be ready to run.
