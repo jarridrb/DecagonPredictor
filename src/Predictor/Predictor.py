@@ -1,8 +1,10 @@
 from ..DataSetParsers.DecagonPublicDataAdjacencyMatricesBuilder import DecagonPublicDataAdjacencyMatricesBuilder
 from ..DataSetParsers.DecagonPublicDataNodeListsBuilder import DecagonPublicDataNodeListsBuilder
 from ..Dtos.PredictionsInformation import PredictionsInformation
+from ..Dtos.ModelType import ModelType
 from ..Dtos.NodeLists import NodeLists
 from ..Dtos.NodeIds import DrugId, SideEffectId
+from ..Dtos.SavedModelInfo import SavedModelInfo
 from ..Utils.ArgParser import ArgParser
 from ..Utils.Config import Config
 
@@ -15,13 +17,7 @@ import csv
 import sys
 import os
 
-def _getConfig() -> Config:
-    argParser = ArgParser()
-    argParser.parse()
-
-    return Config(argParser)
-
-config = _getConfig()
+config = Config.getConfig()
 
 # Will be set in the NpPredictor class
 predsInfoHolder = None
@@ -31,25 +27,48 @@ predsInfoHolderLock = Lock()
 # This should only be instantiated once
 class _PredictionsInfoHolder:
     def __init__(self):
+        self.modelInfos: Dict[ModelType, SavedModelInfo] = self._getSavedModelInfos()
         self.nodeLists: NodeLists = self._getNodeLists()
-        self.drugIdToIdx = {
+        self.drugIdToIdx: Dict[str, int] = {
             DrugId.toDecagonFormat(drugId): idx
             for idx, drugId in enumerate(self.nodeLists.drugNodeList)
         }
 
-        npSaveDir = config.getSetting('NpSaveDir')
+        self.testEdgeDict: Dict = self._buildTestEdgeDict()
+        self.trainEdgeDict: Dict = self._buildTrainEdgeDict()
 
-        embeddingsFname = npSaveDir + 'embeddings.npy'
-        self.embeddings = np.load(embeddingsFname)
+    def _getSavedModelInfos(self) -> Dict[ModelType, SavedModelInfo]:
+        result = {}
 
-        globRelFname = npSaveDir + 'GlobalRelations.npy'
-        self.globalInteraction = np.load(globRelFname)
+        for modelType, saveDir in self._getModelTypeSaveDirs().items():
+            result[modelType] = SavedModelInfo(
+                embeddings=np.load(saveDir + 'embeddings.npy'),
+                importanceMatrices=np.load(saveDir + 'EmbeddingImportance.npz'),
+                globalInteractionMtx=np.load(saveDir + 'GlobalRelations.npy')
+            )
 
-        self.testEdgeDict = self._buildTestEdgeDict()
-        self.trainEdgeDict = self._buildTrainEdgeDict()
+        return result
+
+    def _getModelTypeSaveDirs(self) -> Dict[ModelType, str]:
+        global config
+
+        trainedAllDirName = config.getSetting(
+            'TrainedOnAllSavedNdarrayPath',
+            default='data/ModelSpecificData/TrainedOnAll/'
+        )
+
+        trainedMaskedDirName = config.getSetting(
+            'TrainedWithMaskSavedNdarrayPath',
+            default='data/ModelSpecificData/TrainedWithMasks/'
+        )
+
+        return {
+            ModelType.TrainedOnAll: trainedAllDirName,
+            ModelType.TrainedWithMask: trainedMaskedDirName,
+        }
 
     def _getNodeLists(self) -> NodeLists:
-        listBuilder = DecagonPublicNodeListsBuilder(config)
+        listBuilder = DecagonPublicDataNodeListsBuilder(config)
         return listBuilder.build()
 
     def _buildTestEdgeDict(self) -> Dict:
@@ -57,18 +76,11 @@ class _PredictionsInfoHolder:
 
         testEdgeReader = self._getTestEdgeReader()
         for row in testEdgeReader:
-            if row['RelationId'] == 'C0003126':
-                import pdb; pdb.set_trace()
             if not self._isRowValid(row):
                 continue
 
-            fromNodeIdx = None
-            toNodeIdx = None
-            try:
-                fromNodeIdx = self.drugIdToIdx[row['FromNode']]
-                toNodeIdx = self.drugIdToIdx[row['ToNode']]
-            except KeyError:
-                continue
+            fromNodeIdx = self.drugIdToIdx[row['FromNode']]
+            toNodeIdx = self.drugIdToIdx[row['ToNode']]
 
             newArr = np.array([fromNodeIdx, toNodeIdx, int(row['Label'])])
 
@@ -132,7 +144,7 @@ class _PredictionsInfoHolder:
         return np.take(mtx.todense(), idxsLinear).T
 
     def _getDrugDrugMtxs(self):
-        adjMtxBuilder = DecagonPublicAdjacencyMatricesBuilder(
+        adjMtxBuilder = DecagonPublicDataAdjacencyMatricesBuilder(
             config,
             self.nodeLists
         )
@@ -173,8 +185,9 @@ class TrainingEdgeIterator:
         global predsInfoHolder
         raw = predsInfoHolder.trainEdgeDict[self.relationId].astype(np.int32)
 
-        fromEmbeddings = np.squeeze(predsInfoHolder.embeddings[raw[:, FROM_NODE_IDX]])
-        toEmbeddings = np.squeeze(predsInfoHolder.embeddings[raw[:, TO_NODE_IDX]])
+        modelInfos = predsInfoHolder.modelInfos[self.modelType]
+        fromEmbeddings = np.squeeze(modelInfos.embeddings[raw[:, FROM_NODE_IDX]])
+        toEmbeddings = np.squeeze(modelInfos.embeddings[raw[:, TO_NODE_IDX]])
 
         result = np.empty((fromEmbeddings.shape[0], 32, 32, 1))
         result[:, 0, :, 0] = fromEmbeddings
@@ -191,25 +204,26 @@ class TrainingEdgeIterator:
         global predsInfoHolder
         raw = predsInfoHolder.trainEdgeDict[self.relationId].astype(np.int32)
 
-        fromEmbeddings = np.squeeze(predsInfoHolder.embeddings[raw[:, FROM_NODE_IDX]])
-        toEmbeddings = np.squeeze(predsInfoHolder.embeddings[raw[:, TO_NODE_IDX]])
+        modelInfos = predsInfoHolder.modelInfos[self.modelType]
+        fromEmbeddings = np.squeeze(modelInfos.embeddings[raw[:, FROM_NODE_IDX]])
+        toEmbeddings = np.squeeze(modelInfos.embeddings[raw[:, TO_NODE_IDX]])
 
         return pd.DataFrame().append({
             'FromEmbeddings': fromEmbeddings,
             'ToEmbeddings': toEmbeddings,
             'Labels': raw[:, LABELS_IDX],
-            'GlobalInteractionMatrix': predsInfoHolder.globalInteraction,
+            'GlobalInteractionMatrix': modelInfos.globalInteractionMtx,
         }, ignore_index=True)
 
 class Predictor:
     def __init__(self, relationId: str) -> None:
         self._initGlobalInfosHolderIfNeeded()
 
-        npSaveDir = config.getSetting('NpSaveDir')
-        relFname = 'EmbeddingImportance-%s.npy' % relationId
-        self.defaultImportanceMtx = np.load(npSaveDir + relFname)
-
         global predsInfoHolder
+
+        self.defaultImportanceMtx = \
+            predsInfoHolder.modelInfos[self.modelType].importanceMatrices[relationId]
+
         baseTestEdges = predsInfoHolder.testEdgeDict[relationId]
         self.negTestEdges = baseTestEdges[baseTestEdges[:, 2] == 0]
         self.posTestEdges = baseTestEdges[baseTestEdges[:, 2] == 1]
@@ -261,12 +275,14 @@ class Predictor:
 
         impMtx = importance_matrix if importance_matrix else self.defaultImportanceMtx
         global predsInfoHolder
+        interactionMtx = predsInfoHolder.modelInfos[self.modelType].globalInteraction
+
         return pd.DataFrame().append({
             'FromEmbeddings': fromEmbeddings,
             'ToEmbeddings': toEmbeddings,
             'Labels': ndarrayResults[:, LABEL_IDX],
             'Probabilities': ndarrayResults[:, PROBABILITIES_IDX],
-            'GlobalInteractionMatrix': predsInfoHolder.globalInteraction,
+            'GlobalInteractionMatrix': interactionMtx,
             'ImportanceMatrix': impMtx,
         }, ignore_index=True)
 
@@ -286,10 +302,12 @@ class Predictor:
         COL_SHAPE_IDX = 1
 
         global predsInfoHolder
-        globalInteractionMtx = predsInfoHolder.globalInteraction
+        modelInfos = predsInfoHolder.modelInfos[self.modelType]
 
-        colEmbeddings = predsInfoHolder.embeddings
-        rowEmbeddings = predsInfoHolder.embeddings.T
+        globalInteractionMtx = modelInfos.globalInteractionMtx
+
+        colEmbeddings = modelInfos.embeddings
+        rowEmbeddings = modelInfos.embeddings.T
 
         rawPreds = colEmbeddings @ importanceMtx @ globalInteractionMtx @ importanceMtx @ rowEmbeddings
         probabilities = self._sigmoid(rawPreds)
@@ -313,11 +331,11 @@ class Predictor:
 
     def _getRowEmbeddings(self, edgeIdxs) -> np.ndarray:
         global predsInfoHolder
-        return predsInfoHolder.embeddings[edgeIdxs].T
+        return predsInfoHolder.modelInfos[self.modelType].embeddings[edgeIdxs].T
 
     def _getColEmbeddings(self, edgeIdxs) -> np.ndarray:
         global predsInfoHolder
-        return predsInfoHolder.embeddings[edgeIdxs]
+        return predsInfoHolder.modelInfos[self.modelType].embeddings[edgeIdxs]
 
     def _sigmoid(self, vals):
         return 1. / (1 + np.exp(-vals))
@@ -330,4 +348,9 @@ def _write_as_parquet(relations_to_write):
 
         fname = os.getcwd() + '/train-edges-%s.pkl.gzip' % relationId
         df.to_pickle(fname, compression='gzip')
+
+if __name__ == '__main__':
+    predictor = Predictor('C0003126')
+    import pdb; pdb.set_trace()
+    x = predictor.predict()
 

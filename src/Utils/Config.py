@@ -30,13 +30,16 @@ class Config:
 
         return fname
 
-    def getSetting(self, settingName: str):
+    def getSetting(self, settingName: str, default: object = None):
         if hasattr(self.argParserObj, settingName):
             return self.argParserObj.getKey(settingName)
         elif settingName in self.confJson:
             return self.confJson[settingName]
+        elif default is not None:
+            return default
         else:
             raise KeyError(
-                'Setting %s not in args or configuration file' % settingName
+                'Setting %s not in args or configuration file and ' % settingName +
+                'no default provided'
             )
 
