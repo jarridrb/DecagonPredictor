@@ -21,4 +21,4 @@ bzip2 -d TrainEdges.npz.bz2
 cd ${cwd}
 
 echo ""
-echo "\n\nFinished downloading data"
+echo "Finished downloading data"
