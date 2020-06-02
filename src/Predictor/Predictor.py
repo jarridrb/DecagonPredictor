@@ -1,5 +1,5 @@
-from ..DataSetParsers.DecagonPublicAdjacencyMatricesBuilder import DecagonPublicAdjacencyMatricesBuilder
-from ..DataSetParsers.DecagonPublicNodeListsBuilder import DecagonPublicNodeListsBuilder
+from ..DataSetParsers.DecagonPublicDataAdjacencyMatricesBuilder import DecagonPublicDataAdjacencyMatricesBuilder
+from ..DataSetParsers.DecagonPublicDataNodeListsBuilder import DecagonPublicDataNodeListsBuilder
 from ..Dtos.PredictionsInformation import PredictionsInformation
 from ..Dtos.NodeLists import NodeLists
 from ..Dtos.NodeIds import DrugId, SideEffectId
