@@ -112,7 +112,7 @@ class TrainingEdgeIterator:
         result = np.empty((fromEmbeddings.shape[0], 32, 32, 1))
         result[:, 0, :, 0] = fromEmbeddings
         result[:, :, 0, 0] = toEmbeddings
-        result[:, 0, 0, :] = raw[:, LABELS_IDX]
+        result[:, 0, 0, :] = raw[:, LABELS_IDX].reshape(-1, 1)
 
         return result
 
@@ -196,7 +196,7 @@ class Predictor:
 
         impMtx = importance_matrix if importance_matrix else self.defaultImportanceMtx
         global predsInfoHolder
-        interactionMtx = predsInfoHolder.modelInfos[self.modelType].globalInteraction
+        interactionMtx = predsInfoHolder.modelInfos[self.modelType].globalInteractionMtx
 
         return pd.DataFrame().append({
             'FromEmbeddings': fromEmbeddings,
@@ -263,6 +263,9 @@ class Predictor:
 
 if __name__ == '__main__':
     predictor = Predictor(ModelType.TrainedOnAll, 'C0003126')
-    x = predictor.predict()
+    x = predictor.predict_as_dataframe()
     print(x)
+
+    edgeIter = TrainingEdgeIterator(ModelType.TrainedOnAll, 'C0003126')
+    edgeIter.get_train_edges_as_embeddings()
 
