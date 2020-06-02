@@ -8,7 +8,6 @@ from ..Utils.Config import Config
 
 from typing import Type, Dict, Tuple
 from threading import Lock
-from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import sklearn.metrics
@@ -261,4 +260,9 @@ class Predictor:
 
     def _sigmoid(self, vals):
         return 1. / (1 + np.exp(-vals))
+
+if __name__ == '__main__':
+    predictor = Predictor(ModelType.TrainedOnAll, 'C0003126')
+    x = predictor.predict()
+    print(x)
 
