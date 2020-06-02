@@ -96,3 +96,14 @@ for relation in relations:
     print('Relation: %s, AUC: %f' % (relation, predictor.predict().auroc))
 
 ```
+
+This script yields the following:
+
+```
+Relation: C0003126, AUC: 0.888447
+Relation: C0020456, AUC: 0.789948
+Relation: C0027947, AUC: 0.802926
+Relation: C0026780, AUC: 0.871485
+Relation: C0009193, AUC: 0.836454
+Relation: C0038019, AUC: 0.910391
+```
