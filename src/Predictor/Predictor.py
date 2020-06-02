@@ -1,5 +1,3 @@
-from ..DataSetParsers.DecagonPublicDataAdjacencyMatricesBuilder import DecagonPublicDataAdjacencyMatricesBuilder
-from ..DataSetParsers.DecagonPublicDataNodeListsBuilder import DecagonPublicDataNodeListsBuilder
 from ..Dtos.PredictionsInformation import PredictionsInformation
 from ..Dtos.ModelType import ModelType
 from ..Dtos.NodeLists import NodeLists
@@ -10,6 +8,7 @@ from ..Utils.Config import Config
 
 from typing import Type, Dict, Tuple
 from threading import Lock
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import sklearn.metrics
@@ -23,19 +22,16 @@ config = Config.getConfig()
 predsInfoHolder = None
 predsInfoHolderLock = Lock()
 
+# Shortcut for typing
+NpzFile = np.lib.npyio.NpzFile
+
 # Internal class
 # This should only be instantiated once
 class _PredictionsInfoHolder:
     def __init__(self):
         self.modelInfos: Dict[ModelType, SavedModelInfo] = self._getSavedModelInfos()
-        self.nodeLists: NodeLists = self._getNodeLists()
-        self.drugIdToIdx: Dict[str, int] = {
-            DrugId.toDecagonFormat(drugId): idx
-            for idx, drugId in enumerate(self.nodeLists.drugNodeList)
-        }
-
-        self.testEdgeDict: Dict = self._buildTestEdgeDict()
-        self.trainEdgeDict: Dict = self._buildTrainEdgeDict()
+        self.testEdgeDict: Dict[ModelType, NpzFile] = self._buildTestEdgeDict()
+        self.trainEdgeDict: Dict[ModelType, NpzFile] = self._buildTrainEdgeDict()
 
     def _getSavedModelInfos(self) -> Dict[ModelType, SavedModelInfo]:
         result = {}
@@ -67,99 +63,24 @@ class _PredictionsInfoHolder:
             ModelType.TrainedWithMask: trainedMaskedDirName,
         }
 
-    def _getNodeLists(self) -> NodeLists:
-        listBuilder = DecagonPublicDataNodeListsBuilder(config)
-        return listBuilder.build()
+    def _buildTestEdgeDict(self) -> Dict[ModelType, NpzFile]:
+        return {
+            modelType: np.load(saveDir + 'TestEdges.npz')
+            for modelType, saveDir in self._getModelTypeSaveDirs().items()
+        }
 
-    def _buildTestEdgeDict(self) -> Dict:
-        result = {}
-
-        testEdgeReader = self._getTestEdgeReader()
-        for row in testEdgeReader:
-            if not self._isRowValid(row):
-                continue
-
-            fromNodeIdx = self.drugIdToIdx[row['FromNode']]
-            toNodeIdx = self.drugIdToIdx[row['ToNode']]
-
-            newArr = np.array([fromNodeIdx, toNodeIdx, int(row['Label'])])
-
-            relId = row['RelationId']
-            if relId not in result:
-                result[relId] = newArr.reshape((1, -1))
-            else:
-                result[relId] = np.vstack([result[relId], newArr])
-
-        return result
-
-    def _isRowValid(self, row):
-        def _isDrugNode(strVal: str) -> bool:
-            return strVal[:3] == 'CID'
-
-        return _isDrugNode(row['FromNode']) and _isDrugNode(row['ToNode'])
-
-    def _buildTrainEdgeDict(self) -> None:
-        result = {}
-
-        # Define indices here to not redefine it a bunch
-        indices = None
-        for relId, mtx in self._getDrugDrugMtxs().items():
-            if indices is None:
-                indices = self._getIndices(mtx.shape)
-
-            relId = SideEffectId.toDecagonFormat(relId)
-
-            trainEdgeIdxs = self._getTrainEdgeIdxs(indices, relId, mtx.shape)
-            trainEdgeLabels = self._getTrainEdgeLabels(mtx, trainEdgeIdxs)
-
-            result[relId] = np.hstack([trainEdgeIdxs, trainEdgeLabels])
-
-        return result
-
-    def _getIndices(self, shape) -> np.ndarray:
-        xx, yy = np.indices(shape)
-        return np.dstack([xx, yy]).reshape((-1, 2))
-
-    def _getTrainEdgeIdxs(
-        self,
-        indices: np.ndarray,
-        relId: str,
-        mtxShape: Tuple[int, int]
-    ) -> np.ndarray:
-        # Get test edges and remove that labels from indices (slice of :2)
-        if not relId in self.testEdgeDict:
-            return indices
-
-        testEdges = self.testEdgeDict[relId][:, :2]
-
-        indicesLinear   = (indices[:, 0] * mtxShape[1]) + indices[:, 1]
-        testEdgesLinear = (testEdges[:, 0] * mtxShape[1]) + testEdges[:, 1]
-
-        trainEdges = np.setdiff1d(indicesLinear, testEdgesLinear)
-
-        return np.dstack(np.unravel_index(trainEdges, mtxShape)).reshape(-1, 2)
-
-    def _getTrainEdgeLabels(self, mtx, edgeIdxs: np.ndarray) -> np.ndarray:
-        idxsLinear = (edgeIdxs[:, 0] * mtx.shape[1]) + edgeIdxs[:, 1]
-        return np.take(mtx.todense(), idxsLinear).T
-
-    def _getDrugDrugMtxs(self):
-        adjMtxBuilder = DecagonPublicDataAdjacencyMatricesBuilder(
-            config,
-            self.nodeLists
-        )
-
-        return adjMtxBuilder.build().drugDrugRelationMtxs
-
-    def _getTestEdgeReader(self) -> csv.DictReader:
-        testEdgeFname = config.getSetting('TestEdgeFilename')
-        return csv.DictReader(open(testEdgeFname))
+    def _buildTrainEdgeDict(self) -> Dict[ModelType, NpzFile]:
+        return {
+            modelType: np.load(saveDir + 'TrainEdges.npz')
+            for modelType, saveDir in self._getModelTypeSaveDirs().items()
+        }
 
 class TrainingEdgeIterator:
-    def __init__(self, relationId: str) -> None:
+    def __init__(self, modelType: ModelType, relationId: str) -> None:
         self._initGlobalInfosHolderIfNeeded()
 
-        self.relationId = relationId
+        self.modelType: ModelType = modelType
+        self.relationId: str = relationId
 
     def _initGlobalInfosHolderIfNeeded(self) -> None:
         global predsInfoHolder
@@ -175,7 +96,7 @@ class TrainingEdgeIterator:
     # the second column is the to node, and the third column is the edge label
     def get_train_edges(self) -> np.ndarray:
         global predsInfoHolder
-        return predsInfoHolder.trainEdgeDict[self.relationId]
+        return predsInfoHolder.trainEdgeDict[self.modelType][self.relationId]
 
     def get_train_edges_as_embeddings(self) -> np.ndarray:
         FROM_NODE_IDX = 0
@@ -183,7 +104,7 @@ class TrainingEdgeIterator:
         LABELS_IDX    = 2
 
         global predsInfoHolder
-        raw = predsInfoHolder.trainEdgeDict[self.relationId].astype(np.int32)
+        raw = predsInfoHolder.trainEdgeDict[self.modelType][self.relationId].astype(np.int32)
 
         modelInfos = predsInfoHolder.modelInfos[self.modelType]
         fromEmbeddings = np.squeeze(modelInfos.embeddings[raw[:, FROM_NODE_IDX]])
@@ -202,7 +123,7 @@ class TrainingEdgeIterator:
         LABELS_IDX    = 2
 
         global predsInfoHolder
-        raw = predsInfoHolder.trainEdgeDict[self.relationId].astype(np.int32)
+        raw = predsInfoHolder.trainEdgeDict[self.modelType][self.relationId].astype(np.int32)
 
         modelInfos = predsInfoHolder.modelInfos[self.modelType]
         fromEmbeddings = np.squeeze(modelInfos.embeddings[raw[:, FROM_NODE_IDX]])
@@ -216,15 +137,16 @@ class TrainingEdgeIterator:
         }, ignore_index=True)
 
 class Predictor:
-    def __init__(self, relationId: str) -> None:
+    def __init__(self, modelType: ModelType, relationId: str) -> None:
         self._initGlobalInfosHolderIfNeeded()
+        self.modelType: ModelType = modelType
 
         global predsInfoHolder
 
         self.defaultImportanceMtx = \
             predsInfoHolder.modelInfos[self.modelType].importanceMatrices[relationId]
 
-        baseTestEdges = predsInfoHolder.testEdgeDict[relationId]
+        baseTestEdges = predsInfoHolder.testEdgeDict[self.modelType][relationId]
         self.negTestEdges = baseTestEdges[baseTestEdges[:, 2] == 0]
         self.posTestEdges = baseTestEdges[baseTestEdges[:, 2] == 1]
 
@@ -339,18 +261,4 @@ class Predictor:
 
     def _sigmoid(self, vals):
         return 1. / (1 + np.exp(-vals))
-
-def _write_as_parquet(relations_to_write):
-    for relationId in tqdm(relations_to_write):
-        edgeIterator = TrainingEdgeIterator(relationId)
-
-        df = edgeIterator.get_train_edges_as_embeddings_df()
-
-        fname = os.getcwd() + '/train-edges-%s.pkl.gzip' % relationId
-        df.to_pickle(fname, compression='gzip')
-
-if __name__ == '__main__':
-    predictor = Predictor('C0003126')
-    import pdb; pdb.set_trace()
-    x = predictor.predict()
 

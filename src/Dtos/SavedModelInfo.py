@@ -1,3 +1,4 @@
+from typing import Dict
 import numpy as np
 
 # Shortcut for type descriptors
@@ -8,8 +9,7 @@ class SavedModelInfo:
         self,
         embeddings: np.ndarray,
         importanceMatrices: NpzFile,
-        globalInteractionMtx: np.ndarray,
-        testEdges:
+        globalInteractionMtx: np.ndarray
     ) -> None:
         self.embeddings: np.ndarray = embeddings
         self.importanceMatrices: NpzFile = importanceMatrices
