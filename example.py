@@ -1,9 +1,6 @@
 from src.Predictor.Predictor import Predictor
 from src.Dtos.ModelType import ModelType
 
-modelTypes = [ModelType.TrainedOnAll, ModelType.TrainedWithMask]
-
-3126, 20456, 27947, 26780, 9193, 38019
 relations = [
     'C0003126',
     'C0020456',
@@ -13,8 +10,13 @@ relations = [
     'C0038019'
 ]
 
-for modelType in modelTypes:
-    for relation in relations:
-        predictor = Predictor(modelType, relation)
-        print('Model type: %s, Relation: %s, AUC: %f' % (modelType, relation, predictor.predict().auroc))
+for relation in relations:
+    predictor = Predictor(ModelType.TrainedOnAll, relation)
+    print(
+        'Model type: %s, Relation: %s, AUC: %f' % (
+            ModelType.TrainedOnAll,
+            relation,
+            predictor.predict().auroc
+        )
+    )
 
