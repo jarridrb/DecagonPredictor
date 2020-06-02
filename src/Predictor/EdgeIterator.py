@@ -8,6 +8,7 @@ class EdgeIterator:
     def __init__(self, modelType: ModelType, relationId: str) -> None:
         # The entire ndarray for edges
         self.edges: np.ndarray = self._getEdges(modelType, relationId)
+        self.modelInfos = PredictionsInfoHolder.getInstance().modelInfos[modelType]
 
     def _getEdges(self, modelType: ModelType, relationId: str) -> np.ndarray:
         predsInfoHolder = PredictionsInfoHolder.getInstance()
@@ -25,7 +26,7 @@ class EdgeIterator:
         '''
         return self.edges
 
-    def get_edge_iterator(self) -> Iterator[np.ndarray]:
+    def get_edges_iterator(self) -> Iterator[np.ndarray]:
         '''
         Resulting ndarrays have their first column as the from node index,
         their second columns as the to node index, and their third columns
@@ -46,10 +47,8 @@ class EdgeIterator:
 
         raw = self.get_edges().astype(np.int32)
 
-        predsInfoHolder = PredictionsInfoHolder.getInstance()
-        modelInfos = predsInfoHolder.modelInfos[self.modelType]
-        fromEmbeddings = np.squeeze(modelInfos.embeddings[raw[:, FROM_NODE_IDX]])
-        toEmbeddings = np.squeeze(modelInfos.embeddings[raw[:, TO_NODE_IDX]])
+        fromEmbeddings = np.squeeze(self.modelInfos.embeddings[raw[:, FROM_NODE_IDX]])
+        toEmbeddings = np.squeeze(self.modelInfos.embeddings[raw[:, TO_NODE_IDX]])
 
         result = np.empty((fromEmbeddings.shape[0], 32, 32, 1))
         result[:, 0, :, 0] = fromEmbeddings
