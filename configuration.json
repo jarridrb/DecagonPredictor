@@ -1,5 +1,0 @@
-{
-    "DecagonDrugDrugRelationsFilename": "data/CommonData/NetworkEdgeLists/DrugDrugInteractionNetworkEdgeList.csv",
-    "DecagonDrugProteinRelationsFilename": "data/CommonData/NetworkEdgeLists/DrugProteinInteractionNetworkEdgeList.csv",
-    "DecagonProteinProteinRelationsFilename": "data/CommonData/NetworkEdgeLists/ProteinProteinInteractionNetworkEdgeList.csv"
-}
