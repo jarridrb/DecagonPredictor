@@ -56,25 +56,70 @@ is a series with columns `FromEmbeddings`, `ToEmbeddings`, `Labels`, `Probabilit
 `GlobalInteractionMatrix`, and `ImportanceMatrix`.  As above, if `importance_matrix` is passed as
 `None`, then the pretrained version of D_r is used.  Otherwise, a user-defined version of D_r is used.
 
-### TrainingEdgeIterator
-The `TrainingEdgeIterator` provides for easy access to the training edges for a given `ModelType`.  
-Accordingly, a `TrainingEdgeIterator` is initialized with a `ModelType` and a side effect ID.
-A `TrainingEdgeIterator` object has three available methods, as detailed below.
+### Accessing Graph Edges
+To do any sort of manipulation on top of these pretrained matrices, one must have some way to
+access edges within the drug-drug interaction graph.  To that end, we expose various 
+[EdgeAccessor](src/Predictor/EdgeAccessor.py) objects to support such finding of edges.
+An `EdgeAccessor` is relative to a specific `ModelType` and `SideEffectId`, and so each
+of these must be passed in on initialization of the `EdgeAccessor`.  Each edge returned
+by said `EdgeAccessor` will then be relative to the specified `ModelType` and `SideEffectId`.
 
-- `get_train_edges()`: This returns an ndarray with training edges.  In particular, this is an ndarray
+For utility, we expose three usable EdgeAccessors.  First, the `AllEdgeAccessor`, which
+provides access to all edges within the graph.  Second, the `TrainEdgeAccessor`, which
+provides access to all edges within the graph which were used in training of the `ModelType`.
+And finally, the `TestEdgeAccessor`, which provides access to all edges within the graph which
+were held out for the test set for the model of `ModelType`.
+
+All `EdgeAccessor` objects provide the following methods
+
+- `get_edges()`: This returns an ndarray with training edges.  In particular, this is an ndarray
 with three columns.  The first of these is the from node index, the second is the to node index, and
 the third column is the label of the given edge.
 
-- `get_train_edges_as_embeddings()`: This returns a 4 columned ndarray.  The first column represents
+- `get_edges_iterator()`: This returns an iterator over the ndarray that would be returned by `get_edges()`.
+
+- `get_edges_as_embeddings()`: This returns a 4 columned ndarray.  The first column represents
 the number of edges in the train set total.  The second index is the pretrained embeddings of the from 
 node, while the third index is the pretrained embeddings of the to node.  Finally, the fourth column
 is the label of the training edge.
 
-- `get_train_edges_as_embeddings_df()`: This is effectively the same method as `get_train_edges_as_embeddings`,
-but returns a pandas dataframe instead of an ndarray.  This dataframe has columns: `FromEmbeddings`, `ToEmbeddings`,
-`Labels`, and `GlobalInteractionMatrix`.
+- `get_edges_as_embeddings_iterator()`: This returns an iterator over the ndarray that would be
+returned by `get_edges_as_embeddings()`.
 
-### An Example Script
+Using an `EdgeAccessor` is quite simple.  For example, if we wanted to iterate over all edges within
+the drug-drug interaction graph for side effect C0003126 (this corresponds to Anosmia) and apply some 
+procedure for each available edge, we could simply do the below.
+
+```
+from src.Predictor.EdgeAccessor import AllEdgeAccessor
+from src.Dtos.ModelType import ModelType
+
+edge_accessor = AllEdgeAccessor(ModelType.TrainedOnAll, 'C0003126')
+
+# edge will be an ndarray of shape (3,) wherein the first component is the from
+# node index, the second component is the to node index, and the third component
+# is the label of that edge
+for edge in edge_accessor.get_edges_iterator():
+   # Do my cool procedure using edge!
+   
+```
+
+Note here that had we instead wanted to iterate over only the edges used in training, or similarly only those
+for testing, we would only need to change the assignment to `edge_accessor` as
+
+```
+edge_accessor = TrainEdgeAccessor(ModelType.TrainedOnAll, 'C0003126')
+```
+
+or
+
+```
+edge_accessor = TestEdgeAccessor(ModelType.TrainedOnAll, 'C0003126')
+```
+
+respectively.
+
+### An Example Predictor Script
 This framework can be run quite easily.  For example, if we wanted to do link prediction across some of the
 6 best performing side effects through training, we could simply write the below.
 
