@@ -32,8 +32,8 @@ class PredictionsInfoHolder:
         self._config = Config.getConfig()
         self.modelInfos: Dict[ModelType, SavedModelInfo] = self._getSavedModelInfos()
 
-        self.testEdgeDict: Dict[ModelType, NpzFile] = self._buildTestEdgeDict()
-        self.trainEdgeDict: Dict[ModelType, NpzFile] = self._buildTrainEdgeDict()
+        self.testEdgeDict: Dict[ModelType, NpzFile] = self._buildEdgeDict(isTrain=False)
+        self.trainEdgeDict: Dict[ModelType, NpzFile] = self._buildEdgeDict(isTrain=True)
 
     def _getSavedModelInfos(self) -> Dict[ModelType, SavedModelInfo]:
         result = {}
@@ -63,15 +63,22 @@ class PredictionsInfoHolder:
             ModelType.TrainedWithMask: trainedMaskedDirName,
         }
 
-    def _buildTestEdgeDict(self) -> Dict[ModelType, NpzFile]:
-        return {
-            modelType: np.load(saveDir + 'TestEdges.npz')
-            for modelType, saveDir in self._getModelTypeSaveDirs().items()
-        }
+    def _buildEdgeDict(self, isTrain: bool) -> Dict[ModelType, NpzFile]:
+        loadFname = ''
+        indicatorFxn = None
+        if isTrain:
+            loadFname = 'TrainEdges.npz'
+            indicatorFxn = np.ones
+        else:
+            loadFname = 'TestEdges.npz'
+            indicatorFxn = np.zeros
 
-    def _buildTrainEdgeDict(self) -> Dict[ModelType, NpzFile]:
-        return {
-            modelType: np.load(saveDir + 'TrainEdges.npz')
-            for modelType, saveDir in self._getModelTypeSaveDirs().items()
-        }
+        result = {}
+        for modelType, saveDir in self._getModelTypeSaveDirs().items():
+            result[modelType] = {}
+            for relationId, edges in np.load(saveDir + loadFname).items():
+                result[modelType][relationId] = \
+                    np.hstack([edges, indicatorFxn((edges.shape[0], 1))]).astype(np.int32)
+
+        return result
 
