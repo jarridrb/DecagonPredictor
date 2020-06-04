@@ -22,7 +22,7 @@ class Predictor:
 
     def predict(self, importance_matrix=None) -> PredictionsInformation:
         LABEL_IDX         = 2
-        PROBABILITIES_IDX = 3
+        PROBABILITIES_IDX = 4
 
         ndarrayResults = self._predict(importance_matrix)
 
