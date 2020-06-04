@@ -84,6 +84,9 @@ class Predictor:
         TO_EDGE_IDX   = 1
         COL_SHAPE_IDX = 1
 
+        print("edges:", edges)
+
+
         modelInfos = PredictionsInfoHolder.getInstance().modelInfos[self.modelType]
 
         globalInteractionMtx = modelInfos.globalInteractionMtx
