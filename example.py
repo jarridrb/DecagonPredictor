@@ -47,9 +47,14 @@ preds = (Z @ D @ R @ D @ Z.T).reshape(-1)
 test_labels = labels[~is_train]
 test_preds = preds[~is_train]
 
-
 print("AUC", sklearn.metrics.roc_auc_score(test_labels, test_preds))
+
+# DataLoader():
+    # give_index()
+    # sample(label_idx)
+    # take, Zi, Zj
+
+    # [Zi, Zj, label)
 
 # AUC 0.898
 # todo: train_loader, test_loader
-
