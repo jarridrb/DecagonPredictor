@@ -378,6 +378,6 @@ if __name__ == '__main__':
     infoHolder = _PredictionsInfoHolder()
 
     import pdb; pdb.set_trace()
-    np.savez('TrainEdges', **infoHolder.trainEdgeDict)
-    np.savez('TestEdges', **infoHolder.testEdgeDict)
+    np.savez_compressed('TrainEdges', **infoHolder.trainEdgeDict)
+    np.savez_compressed('TestEdges', **infoHolder.testEdgeDict)
 
