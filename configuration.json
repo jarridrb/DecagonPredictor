@@ -1,4 +1,5 @@
 {
+    "TestEdgeFilename": "test-edges-rel-masking-more-2020-06-05-22:05:06.863294.csv",
     "DecagonDrugDrugRelationsFilename": "data/CommonData/NetworkEdgeLists/DrugDrugInteractionNetworkEdgeList.csv",
     "DecagonDrugProteinRelationsFilename": "data/CommonData/NetworkEdgeLists/DrugProteinInteractionNetworkEdgeList.csv",
     "DecagonProteinProteinRelationsFilename": "data/CommonData/NetworkEdgeLists/ProteinProteinInteractionNetworkEdgeList.csv"

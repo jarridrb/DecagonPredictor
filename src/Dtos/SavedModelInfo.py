@@ -9,7 +9,6 @@ class SavedModelInfo:
         embeddings: np.ndarray,
         importanceMatrices: NpzFile,
         globalInteractionMtx: np.ndarray,
-        testEdges:
     ) -> None:
         self.embeddings: np.ndarray = embeddings
         self.importanceMatrices: NpzFile = importanceMatrices

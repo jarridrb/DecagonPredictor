@@ -27,7 +27,7 @@ predsInfoHolderLock = Lock()
 # This should only be instantiated once
 class _PredictionsInfoHolder:
     def __init__(self):
-        self.modelInfos: Dict[ModelType, SavedModelInfo] = self._getSavedModelInfos()
+        #self.modelInfos: Dict[ModelType, SavedModelInfo] = self._getSavedModelInfos()
         self.nodeLists: NodeLists = self._getNodeLists()
         self.drugIdToIdx: Dict[str, int] = {
             DrugId.toDecagonFormat(drugId): idx
@@ -108,11 +108,14 @@ class _PredictionsInfoHolder:
                 indices = self._getIndices(mtx.shape)
 
             relId = SideEffectId.toDecagonFormat(relId)
-
             trainEdgeIdxs = self._getTrainEdgeIdxs(indices, relId, mtx.shape)
             trainEdgeLabels = self._getTrainEdgeLabels(mtx, trainEdgeIdxs)
 
-            result[relId] = np.hstack([trainEdgeIdxs, trainEdgeLabels])
+            intermed = np.hstack([trainEdgeIdxs, trainEdgeLabels])
+            if relId in self.testEdgeDict:
+                result[relId] = np.hstack([trainEdgeIdxs, trainEdgeLabels])
+            else:
+                self._assignNewEdges(result, relId, intermed)
 
         return result
 
@@ -130,7 +133,7 @@ class _PredictionsInfoHolder:
         if not relId in self.testEdgeDict:
             return indices
 
-        testEdges = self.testEdgeDict[relId][:, :2]
+        testEdges = self.testEdgeDict[relId][:, :2] if relId in self.testEdgeDict else np.empty((0,2))
 
         indicesLinear   = (indices[:, 0] * mtxShape[1]) + indices[:, 1]
         testEdgesLinear = (testEdges[:, 0] * mtxShape[1]) + testEdges[:, 1]
@@ -145,8 +148,8 @@ class _PredictionsInfoHolder:
 
     def _getDrugDrugMtxs(self):
         adjMtxBuilder = DecagonPublicDataAdjacencyMatricesBuilder(
+            self.nodeLists,
             config,
-            self.nodeLists
         )
 
         return adjMtxBuilder.build().drugDrugRelationMtxs
@@ -154,6 +157,28 @@ class _PredictionsInfoHolder:
     def _getTestEdgeReader(self) -> csv.DictReader:
         testEdgeFname = config.getSetting('TestEdgeFilename')
         return csv.DictReader(open(testEdgeFname))
+
+    def _assignNewEdges(self, trainEdgeDict, relationId, allPossibleEdges) -> None:
+        testEdgeIdxs = self._getNewTestEdgeIdxs(allPossibleEdges)
+
+        allEdgeIdxs = np.arange(allPossibleEdges.shape[0])
+        trainEdgeIdxs = np.setdiff1d(allEdgeIdxs, testEdgeIdxs)
+
+        self.testEdgeDict[relationId] = allPossibleEdges[testEdgeIdxs]
+        trainEdgeDict[relationId] = allPossibleEdges[trainEdgeIdxs]
+
+    def _getNewTestEdgeIdxs(self, allPossibleEdges) -> np.ndarray:
+        testEdgeProportion = 0.1
+
+        negativeEdgeIdxs = np.where(allPossibleEdges[:, 2] == 0)[0]
+        positiveEdgeIdxs = np.where(allPossibleEdges[:, 2] == 1)[0]
+
+        numTestEdgesPerLabel = int(np.ceil(positiveEdgeIdxs.shape[0] * testEdgeProportion))
+
+        negTestIdxs = negativeEdgeIdxs[np.random.choice(negativeEdgeIdxs.shape[0], numTestEdgesPerLabel)]
+        posTestIdxs = positiveEdgeIdxs[np.random.choice(positiveEdgeIdxs.shape[0], numTestEdgesPerLabel)]
+
+        return np.hstack([negTestIdxs, posTestIdxs])
 
 class TrainingEdgeIterator:
     def __init__(self, relationId: str) -> None:
@@ -350,7 +375,9 @@ def _write_as_parquet(relations_to_write):
         df.to_pickle(fname, compression='gzip')
 
 if __name__ == '__main__':
-    predictor = Predictor('C0003126')
+    infoHolder = _PredictionsInfoHolder()
+
     import pdb; pdb.set_trace()
-    x = predictor.predict()
+    np.savez('TrainEdges', **infoHolder.trainEdgeDict)
+    np.savez('TestEdges', **infoHolder.testEdgeDict)
 
